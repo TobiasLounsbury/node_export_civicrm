@@ -1,5 +1,18 @@
 <?php
 
+/**
+ * Lookup to encode a form_key into a CIVICRM_NODE_EXPORT string
+ *
+ * Given a custom group id and a custom field id
+ * look up the names, compose an encoded string and return it
+ *
+ * @param $pieces
+ *  exploded string of an encoded form key
+ *  0 = prefix
+ *  1 = custom group id
+ *  2 = custom field id
+ * @return string
+ */
 function _getCiviCRMNamesFromIds_custom($pieces) {
   civicrm_initialize();
   try {
@@ -15,10 +28,27 @@ function _getCiviCRMNamesFromIds_custom($pieces) {
     ));
     return "CIVICRM_NODE_EXPORT:CUSTOM:{$pieces[0]}:{$customGroupName}:{$customFieldName}";
   } catch (Exception $e) {
+    //If for some reason we couldn't find the custom group or field
+    //Return the original string.
     return "{$pieces[0]}_cg{$pieces[1]}_custom_{$pieces[2]}";
   }
 }
 
+/**
+ * Lookup to Generate form_keys for custom fields
+ *
+ * Given a custom group name and a custom field name
+ * look up the id's, compose a form_key and return it
+ *
+ * @param $pieces
+ *  exploded string of an encoded form key
+ *  0 = encoding prefix
+ *  1 = entity
+ *  2 = prefix
+ *  3 = custom group name
+ *  4 = custom field name
+ * @return string
+ */
 function _getFormKeyFromNames_custom($pieces) {
   civicrm_initialize();
 
@@ -36,6 +66,18 @@ function _getFormKeyFromNames_custom($pieces) {
   return "{$pieces[2]}_cg{$customGroupId}_custom_{$customFieldId}";
 }
 
+
+/**
+ * Implementation of hook_node_export_encode_alter
+ * invoked when a node is being exported
+ *
+ * Watch for civicrm webform custom fields, do a lookup and
+ * replace the form_key with names so we can parse them on import
+ *
+ * @param $code_string
+ * @param $nodes
+ * @param $format
+ */
 function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $format) {
   if ($format == "json") {
     $nodesToAlter = array();
@@ -65,6 +107,20 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
   }
 }
 
+
+/**
+ * Implementation of hook_node_export_import_alter
+ * involed when a node is imported
+ *
+ * Loop through the nodes being imported, look for webforms
+ * with civicrm components, and loop through the fields to find
+ * form_keys that we encoded on export. When found do lookups and
+ * replace the key with the standard webform_civicrm format.
+ *
+ * @param $nodes
+ * @param $format
+ * @param $save
+ */
 function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
   if ($format == "json") {
     foreach($nodes as &$node) {
