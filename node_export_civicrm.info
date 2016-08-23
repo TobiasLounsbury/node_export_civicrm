@@ -1,0 +1,5 @@
+name = CiviCRM Webform Node Export
+core = 7.x
+package = CiviCRM
+dependencies[] = civicrm
+dependencies[] = node_export

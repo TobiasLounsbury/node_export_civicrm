@@ -1,0 +1,92 @@
+<?php
+
+function _getCiviCRMNamesFromIds_custom($pieces) {
+  civicrm_initialize();
+  try {
+    $customGroupName = civicrm_api3('CustomGroup', 'getvalue', array(
+      'id' => $pieces[1],
+      'return' => 'name',
+    ));
+
+    $customFieldName = civicrm_api3('CustomField', 'getvalue', array(
+      'custom_group_id' => $pieces[1],
+      'id' => $pieces[2],
+      'return' => 'name',
+    ));
+    return "CIVICRM_NODE_EXPORT:CUSTOM:{$pieces[0]}:{$customGroupName}:{$customFieldName}";
+  } catch (Exception $e) {
+    return "{$pieces[0]}_cg{$pieces[1]}_custom_{$pieces[2]}";
+  }
+}
+
+function _getFormKeyFromNames_custom($pieces) {
+  civicrm_initialize();
+
+  $customGroupId = civicrm_api3('CustomGroup', 'getvalue', array(
+    'name' => $pieces[3],
+    'return' => 'id',
+  ));
+
+  $customFieldId = civicrm_api3('CustomField', 'getvalue', array(
+    'custom_group_id' => $customGroupId,
+    'name' => $pieces[4],
+    'return' => 'id',
+  ));
+
+  return "{$pieces[2]}_cg{$customGroupId}_custom_{$customFieldId}";
+}
+
+function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $format) {
+  if ($format == "json") {
+    $nodesToAlter = array();
+
+    foreach($nodes as $index => $node) {
+      if ($node->type == "webform") {
+        if (property_exists($node, "webform_civicrm")) {
+          $nodesToAlter[] = $index;
+        }
+      }
+    }
+
+    if(!empty($nodesToAlter)) {
+      $nodesObj = json_decode($code_string, true);
+      foreach($nodesToAlter as $nodeIndex) {
+        foreach($nodesObj[$nodeIndex]['webform']['components'] as &$field) {
+          if (preg_match('/civicrm_.*_cg/', $field['form_key'])) {
+            //Get CiviCRM Custom Names
+            $pieces = explode(":", preg_replace("/(civicrm_.*)_cg([0-9]*)_custom_(.*)/", '${1}:${2}:${3}', $field['form_key']));
+            $field['form_key'] = _getCiviCRMNamesFromIds_custom($pieces);
+          }
+        }
+      }
+
+      $code_string = json_encode($nodesObj);
+    }
+  }
+}
+
+function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
+  if ($format == "json") {
+    foreach($nodes as &$node) {
+      if($node->type == "webform" && property_exists($node, "webform_civicrm")) {
+        foreach($node->webform['components'] as &$field) {
+          $sub = substr($field['form_key'], 0, 19);
+          if (substr($field['form_key'], 0, 19) == "CIVICRM_NODE_EXPORT") {
+            $pieces = explode(":", $field['form_key']);
+
+            switch($pieces[1]) {
+              case"CUSTOM":
+                $newKey = _getFormKeyFromNames_custom($pieces);
+                break;
+              case "RELATIONSHIP":
+                //todo: Handle Relationship Names
+                break;
+            }
+
+            $field['form_key'] = $newKey;
+          }
+        }
+      }
+    }
+  }
+}
