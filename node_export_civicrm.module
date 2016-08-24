@@ -163,7 +163,6 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
             foreach($contact['relationship'] as &$relationship) {
               if(array_key_exists("relationship_type_id", $relationship)) {
                 $relationship['relationship_type_id'] = _getRelationshipTypeNameFromId($relationship['relationship_type_id']);
-
               }
             }
           }
@@ -194,7 +193,6 @@ function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
     foreach($nodes as &$node) {
       if($node->type == "webform" && property_exists($node, "webform_civicrm")) {
         foreach($node->webform['components'] as &$field) {
-          $sub = substr($field['form_key'], 0, 19);
           if (substr($field['form_key'], 0, 19) == "CIVICRM_NODE_EXPORT") {
             $pieces = explode(":", $field['form_key']);
 
@@ -215,7 +213,9 @@ function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
         foreach($node->webform_civicrm['data']['contact'] as &$contact) {
           if(array_key_exists("relationship", $contact)) {
             foreach($contact['relationship'] as &$relationship) {
-              if(array_key_exists("relationship_type_id", $relationship)) {
+              if(array_key_exists("relationship_type_id", $relationship) &&
+                is_string($relationship['relationship_type_id']) &&
+                substr($relationship['relationship_type_id'], 0, 19) == "CIVICRM_NODE_EXPORT") {
                 $relationship['relationship_type_id'] = _getRelationshipTypeIdFromName($relationship['relationship_type_id']);
               }
             }
