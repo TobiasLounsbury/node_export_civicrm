@@ -68,6 +68,60 @@ function _getFormKeyFromNames_custom($pieces) {
 
 
 /**
+ * Given an array of type_direction keys, return
+ * an encoded string that contains the oldid, direction
+ * and name of the relationship type.
+ *
+ * @param $types
+ * @return string
+ */
+function _getRelationshipTypeNameFromId($types) {
+  $names = array();
+  foreach($types as $type) {
+    list($id, $ab) = explode("_", $type);
+    $return = ($ab == "b") ? "name_b_a" : "name_a_b";
+
+    $name = civicrm_api3('RelationshipType', 'getvalue', array(
+      'return' => $return,
+      'id' => $id,
+    ));
+
+    $names[] = "{$name}|{$ab}|{$id}";
+  }
+
+  return "CIVICRM_NODE_EXPORT:". implode(":", $names);
+}
+
+/**
+ * Given an encoded string, fetch relationship type ids
+ * for each type that we have a name for. Otherwise return the old id.
+ *
+ * @param $string
+ * @return Civi\Angular\Page\Main
+ */
+function _getRelationshipTypeIdFromName($string) {
+  $names = explode(":", str_replace("CIVICRM_NODE_EXPORT:", "", $string));
+  $ids = array();
+
+  foreach($names as $nameString) {
+    list($name, $ab, $oldId) = explode("|", $nameString);
+    $nameType = ($ab == "b") ? "name_b_a" : "name_a_b";
+    try {
+      $id = civicrm_api3('RelationshipType', 'getvalue', array(
+        'return' => "id",
+        "{$nameType}" => $name,
+      ));
+      $ids["{$id}_{$ab}"] = "{$id}_{$ab}";
+    } catch (Exception $e) {
+      $ids["{$oldId}_{$ab}"] = "{$oldId}_{$ab}";
+    }
+  }
+
+  return $ids;
+}
+
+
+/**
  * Implementation of hook_node_export_encode_alter
  * invoked when a node is being exported
  *
@@ -93,6 +147,7 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
     if(!empty($nodesToAlter)) {
       $nodesObj = json_decode($code_string, true);
       foreach($nodesToAlter as $nodeIndex) {
+        //Handle Form Keys in custom Fields
         foreach($nodesObj[$nodeIndex]['webform']['components'] as &$field) {
           if (preg_match('/civicrm_.*_cg/', $field['form_key'])) {
             //Get CiviCRM Custom Names
@@ -100,8 +155,21 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
             $field['form_key'] = _getCiviCRMNamesFromIds_custom($pieces);
           }
         }
-      }
 
+        //Handle Relationship Types
+        foreach($nodesObj[$nodeIndex]['webform_civicrm']['data']['contact'] as &$contact) {
+
+          if(array_key_exists("relationship", $contact)) {
+            foreach($contact['relationship'] as &$relationship) {
+              if(array_key_exists("relationship_type_id", $relationship)) {
+                $relationship['relationship_type_id'] = _getRelationshipTypeNameFromId($relationship['relationship_type_id']);
+
+              }
+            }
+          }
+        }
+
+      }
       $code_string = json_encode($nodesObj);
     }
   }
@@ -140,6 +208,17 @@ function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
             }
 
             $field['form_key'] = $newKey;
+          }
+        }
+
+        //Handle Relationship Types
+        foreach($node->webform_civicrm['data']['contact'] as &$contact) {
+          if(array_key_exists("relationship", $contact)) {
+            foreach($contact['relationship'] as &$relationship) {
+              if(array_key_exists("relationship_type_id", $relationship)) {
+                $relationship['relationship_type_id'] = _getRelationshipTypeIdFromName($relationship['relationship_type_id']);
+              }
+            }
           }
         }
       }
