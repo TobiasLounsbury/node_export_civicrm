@@ -218,6 +218,27 @@ function _getOptionValueValue($group, $name, $oldValue) {
 }
 
 
+/**
+ * Translates casetypes between name and id
+ *
+ * @param $from
+ * @param $to
+ * @param $fromValue
+ * @param $oldTo
+ * @return string
+ */
+function _caseTypeLookup($from, $to, $fromValue, $oldTo) {
+  try {
+    $result = civicrm_api3('CaseType', 'getvalue', array(
+      'return' => $to,
+      "{$from}" => $fromValue,
+    ));
+    return $result;
+  } catch (Exception $e) {
+    return $oldTo;
+  }
+}
+
 
 /**
  * Implementation of hook_node_export_encode_alter
@@ -277,11 +298,18 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
         //Handle Activity Types
         if (array_key_exists("activity", $nodesObj[$nodeIndex]['webform_civicrm']['data'])) {
           foreach ($nodesObj[$nodeIndex]['webform_civicrm']['data']['activity'] as &$activity) {
-            if (is_array($activity) && array_key_exists("activity", $activity)) {
-              foreach ($activity['activity'] as &$type) {
-                if (array_key_exists("activity_type_id", $type)) {
-                  $type['activity_type_id'] = _getOptionValueName("activity_type", $type['activity_type_id']);
+            if (is_array($activity)) {
+              if (array_key_exists("activity", $activity)) {
+                foreach ($activity['activity'] as &$type) {
+                  if (array_key_exists("activity_type_id", $type)) {
+                    $type['activity_type_id'] = _getOptionValueName("activity_type", $type['activity_type_id']);
+                  }
                 }
+              }
+
+              //Handle CaseTypes in Activities
+              if (array_key_exists("case_type_id", $activity)) {
+                $activity['case_type_id'] = "CIVICRM_NODE_EXPORT:". _caseTypeLookup("id", "name", $activity['case_type_id'], $activity['case_type_id']) . ":{$activity['case_type_id']}";
               }
             }
           }
@@ -355,12 +383,20 @@ function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
         //Handle Activity Types
         if (array_key_exists("activity", $node->webform_civicrm['data'])) {
           foreach ($node->webform_civicrm['data']['activity'] as &$activity) {
-            if (is_array($activity) && array_key_exists("activity", $activity)) {
-              foreach ($activity['activity'] as &$type) {
-                if (array_key_exists("activity_type_id", $type) && substr($type['activity_type_id'], 0, 19) == "CIVICRM_NODE_EXPORT") {
-                  $pieces = explode(":", $type['activity_type_id']);
-                  $type['activity_type_id'] = _getOptionValueValue("activity_type", $pieces[1], $pieces[2]);
+            if (is_array($activity)) {
+              //Handle Activity Type Lookup
+              if (array_key_exists("activity", $activity)) {
+                foreach ($activity['activity'] as &$type) {
+                  if (array_key_exists("activity_type_id", $type) && substr($type['activity_type_id'], 0, 19) == "CIVICRM_NODE_EXPORT") {
+                    $pieces = explode(":", $type['activity_type_id']);
+                    $type['activity_type_id'] = _getOptionValueValue("activity_type", $pieces[1], $pieces[2]);
+                  }
                 }
+              }
+              //Handle CaseType Lookups in Activities
+              if (array_key_exists("case_type_id", $activity) && substr($activity['case_type_id'], 0, 19) == "CIVICRM_NODE_EXPORT") {
+                $pieces = explode(":", $activity['case_type_id']);
+                $activity['case_type_id'] = _caseTypeLookup("name", "id", $pieces[1], $pieces[2]);
               }
             }
           }
