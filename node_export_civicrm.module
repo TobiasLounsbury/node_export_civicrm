@@ -11,61 +11,112 @@
  *  0 = prefix
  *  1 = custom group id
  *  2 = custom field id
+ * @param $entity
+ *  The node_export_civicrm pseudo entity to encode in the string
+ *  for the purpose of selecting a decoding scheme on import.
+ * @param $original
  * @return string
  */
-function _getCiviCRMNamesFromIds_custom($pieces) {
+function _getCiviCRMCustomGroupAndFieldNames($prefix, $group, $field, $entity, $original) {
   civicrm_initialize();
   try {
     $customGroupName = civicrm_api3('CustomGroup', 'getvalue', array(
-      'id' => $pieces[1],
+      'id' => $group,
       'return' => 'name',
     ));
 
     $customFieldName = civicrm_api3('CustomField', 'getvalue', array(
-      'custom_group_id' => $pieces[1],
-      'id' => $pieces[2],
+      'custom_group_id' => $group,
+      'id' => $field,
       'return' => 'name',
     ));
-    return "CIVICRM_NODE_EXPORT:CUSTOM:{$pieces[0]}:{$customGroupName}:{$customFieldName}";
+    return "CIVICRM_NODE_EXPORT:{$entity}:{$prefix}:{$customGroupName}:{$customFieldName}:{$group}:{$field}";
   } catch (Exception $e) {
     //If for some reason we couldn't find the custom group or field
     //Return the original string.
-    return "{$pieces[0]}_cg{$pieces[1]}_custom_{$pieces[2]}";
+    return $original;
   }
 }
+
+
+function _getCiviCRMCustomFieldName($prefix, $field, $entity, $original) {
+  civicrm_initialize();
+  try {
+    $customFieldName = civicrm_api3('CustomField', 'getvalue', array(
+      'id' => $field,
+      'return' => 'name',
+    ));
+    return "CIVICRM_NODE_EXPORT:{$entity}:{$prefix}:{$customFieldName}:{$field}";
+  } catch (Exception $e) {
+    //If for some reason we couldn't find the custom field
+    //Return the original string.
+    return $original;
+  }
+}
+
 
 /**
  * Lookup to Generate form_keys for custom fields
  *
- * Given a custom group name and a custom field name
- * look up the id's, compose a form_key and return it
+ * Takes a format string, group name, and field name
+ * Does a lookup to find the IDs of the group and field,
+ * Then replaces the tokens for those two items in the format string.
  *
- * @param $pieces
- *  exploded string of an encoded form key
- *  0 = encoding prefix
- *  1 = entity
- *  2 = prefix
- *  3 = custom group name
- *  4 = custom field name
+ * @param $format
+ * @param $group
+ * @param $field
+ * @param $oldGroup
+ * @param $oldField
  * @return string
  */
-function _getFormKeyFromNames_custom($pieces) {
+function _getFormKeyFromFieldAndGroupNames($format, $group, $field, $oldGroup = null, $oldField = null) {
   civicrm_initialize();
 
-  $customGroupId = civicrm_api3('CustomGroup', 'getvalue', array(
-    'name' => $pieces[3],
-    'return' => 'id',
-  ));
+  try {
+    $customGroupId = civicrm_api3('CustomGroup', 'getvalue', array(
+      'name' => $group,
+      'return' => 'id',
+    ));
 
-  $customFieldId = civicrm_api3('CustomField', 'getvalue', array(
-    'custom_group_id' => $customGroupId,
-    'name' => $pieces[4],
-    'return' => 'id',
-  ));
+    $customFieldId = civicrm_api3('CustomField', 'getvalue', array(
+      'custom_group_id' => $customGroupId,
+      'name' => $field,
+      'return' => 'id',
+    ));
 
-  return "{$pieces[2]}_cg{$customGroupId}_custom_{$customFieldId}";
+    return str_replace(array("#GROUP#", "#FIELD#"), array($customGroupId, $customFieldId), $format);
+  } catch (Exception $e) {
+    return str_replace(array("#GROUP#", "#FIELD#"), array($oldGroup, $oldField), $format);
+  }
 }
 
+
+/**
+ * Lookup to Generate form_keys for custom fields
+ *
+ * Takes a format string, and field name
+ * Does a lookup to find the ID of the field,
+ * Then replaces the token in the format string.
+ *
+ * @param $format
+ * @param $field
+ * @param $oldField
+ * @return string
+ */
+function _getFormKeyFromFieldName($format, $field, $oldField) {
+  civicrm_initialize();
+
+  try {
+    $customFieldId = civicrm_api3('CustomField', 'getvalue', array(
+      'name' => $field,
+      'return' => 'id',
+    ));
+
+    return str_replace("#FIELD#", $customFieldId, $format);
+  } catch (Exception $e) {
+    return str_replace("#FIELD#", $oldField, $format);
+  }
+}
 
 /**
  * Given an array of type_direction keys, return
@@ -136,6 +187,7 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
   if ($format == "json") {
     $nodesToAlter = array();
 
+    //Compile a list of nodes that are webforms with civicrm components
     foreach($nodes as $index => $node) {
       if ($node->type == "webform") {
         if (property_exists($node, "webform_civicrm")) {
@@ -144,21 +196,29 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
       }
     }
 
+    //Act on our pre-compiled list of nodes.
     if(!empty($nodesToAlter)) {
       $nodesObj = json_decode($code_string, true);
       foreach($nodesToAlter as $nodeIndex) {
         //Handle Form Keys in custom Fields
         foreach($nodesObj[$nodeIndex]['webform']['components'] as &$field) {
+          //Handle Contact Custom Fields
           if (preg_match('/civicrm_.*_cg/', $field['form_key'])) {
             //Get CiviCRM Custom Names
             $pieces = explode(":", preg_replace("/(civicrm_.*)_cg([0-9]*)_custom_(.*)/", '${1}:${2}:${3}', $field['form_key']));
-            $field['form_key'] = _getCiviCRMNamesFromIds_custom($pieces);
+            $field['form_key'] = _getCiviCRMCustomGroupAndFieldNames($pieces[0], $pieces[1], $pieces[2], "CUSTOM", $field['form_key']);
           }
+          //Handle Relationship Custom Fields
+          if (preg_match('/civicrm_.*relationship_custom/', $field['form_key'])) {
+            //Get CiviCRM Custom Field Name Only
+            $pieces = explode(":", preg_replace("/(civicrm_.*)_relationship_custom_(.*)/", '${1}:${2}', $field['form_key']));
+            $field['form_key'] = _getCiviCRMCustomFieldName($pieces[0], $pieces[1], "RELATIONSHIP", $field['form_key']);
+          }
+          //todo: Handle Custom fields on Activities
         }
 
         //Handle Relationship Types
         foreach($nodesObj[$nodeIndex]['webform_civicrm']['data']['contact'] as &$contact) {
-
           if(array_key_exists("relationship", $contact)) {
             foreach($contact['relationship'] as &$relationship) {
               if(array_key_exists("relationship_type_id", $relationship)) {
@@ -192,17 +252,26 @@ function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
   if ($format == "json") {
     foreach($nodes as &$node) {
       if($node->type == "webform" && property_exists($node, "webform_civicrm")) {
+
+        //Handle Custom Fields
         foreach($node->webform['components'] as &$field) {
           if (substr($field['form_key'], 0, 19) == "CIVICRM_NODE_EXPORT") {
             $pieces = explode(":", $field['form_key']);
 
             switch($pieces[1]) {
               case"CUSTOM":
-                $newKey = _getFormKeyFromNames_custom($pieces);
+                $format = "{$pieces[2]}_cg#GROUP#_custom_#FIELD#";
+                $oldGroup = (array_key_exists(5, $pieces)) ? $pieces[5] : null;
+                $oldField = (array_key_exists(6, $pieces)) ? $pieces[6] : null;
+                $newKey = _getFormKeyFromFieldAndGroupNames($format, $pieces[3], $pieces[4], $oldGroup, $oldField);
                 break;
               case "RELATIONSHIP":
-                //todo: Handle Relationship Names
+                $format = "{$pieces[2]}_relationship_custom_#FIELD#";
+                $oldField = (array_key_exists(4, $pieces)) ? $pieces[4] : null;
+                $newKey = _getFormKeyFromFieldName($format, $pieces[3], $oldField);
                 break;
+
+              //todo: Handle Activity Custom Fields
             }
 
             $field['form_key'] = $newKey;
