@@ -9,7 +9,7 @@ to an encoded format like
 
 On import it attempts to do a lookup based on name and if found, returns the corresponding ids. If not found it returns the correctly formatted form key with the old ids.
 
-It currently Supports
+##Currently Supported
 
 - Custom Data
   - Contact Custom Data
@@ -19,3 +19,13 @@ It currently Supports
 - Activity Types
 - Relationship Types
 - Case Types (Within an Activity)
+
+## Known Limitations
+
+1. It only works when you export a webform to JSON format.
+2. It does not currently support:
+  - Grants
+  - Memberships
+  - Contributions
+  - Events
+  - Creating Cases (As it's own Entity)
