@@ -14,11 +14,13 @@ On import it attempts to do a lookup based on name and if found, returns the cor
 - Custom Data
   - Contact Custom Data
   - Activity Custom Data
+  - Case Custom Data
   - Relationship Custom Data
   - Any other Custom data that uses the `civicrm_.*_cg[0-9]_custom[0-9]` form key format (Though these are untested)
 - Activity Types
 - Relationship Types
-- Case Types (Within an Activity)
+- Case types within an Activity
+- Cases
 
 ## Known Limitations
 
@@ -28,4 +30,3 @@ On import it attempts to do a lookup based on name and if found, returns the cor
   - Memberships
   - Contributions
   - Events
-  - Creating Cases (As it's own Entity)
