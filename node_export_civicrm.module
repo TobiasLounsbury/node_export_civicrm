@@ -315,7 +315,24 @@ function node_export_civicrm_node_export_encode_alter(&$code_string, $nodes, $fo
           }
         }
 
-        //Todo: Handle Cases
+        //Handle Cases
+        if (array_key_exists("case", $nodesObj[$nodeIndex]['webform_civicrm']['data'])) {
+          foreach ($nodesObj[$nodeIndex]['webform_civicrm']['data']['case'] as &$case) {
+            if (is_array($case) && array_key_exists("case", $case) && is_array($case['case'])) {
+              foreach ($case['case'] as &$type) {
+                if (array_key_exists("case_type_id", $type)) {
+                  $type['case_type_id'] = "CIVICRM_NODE_EXPORT:". _caseTypeLookup("id", "name", $type['case_type_id'], $type['case_type_id']) . ":{$type['case_type_id']}";
+                }
+              }
+            }
+          }
+        }
+
+
+        //Todo: Handle Even Registrations
+        //Todo: Handle Contributions
+        //Todo: Handle Memberships
+        //Todo: Handle Grants
 
       }
       $code_string = json_encode($nodesObj);
@@ -403,6 +420,23 @@ function node_export_civicrm_node_export_import_alter(&$nodes, $format, $save) {
         }
 
         //todo: Handle Cases
+        if (array_key_exists("case", $node->webform_civicrm['data'])) {
+          foreach ($node->webform_civicrm['data']['case'] as &$case) {
+            if (is_array($case) && array_key_exists("case", $case) && is_array($case['case'])) {
+              foreach ($case['case'] as &$type) {
+                if (array_key_exists("case_type_id", $type) && substr($type['case_type_id'], 0, 19) == "CIVICRM_NODE_EXPORT") {
+                  $pieces = explode(":", $type['case_type_id']);
+                  $type['case_type_id'] = _caseTypeLookup("name", "id", $pieces[1], $pieces[2]);
+                }
+              }
+            }
+          }
+        }
+
+        //Todo: Handle Even Registrations
+        //Todo: Handle Contributions
+        //Todo: Handle Memberships
+        //Todo: Handle Grants
       }
     }
   }
